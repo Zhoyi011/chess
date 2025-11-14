@@ -153,6 +153,12 @@
             font-weight: bold;
             font-size: 12px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .wall-option:hover {
+            transform: scale(1.2);
+            background-color: #2980b9;
         }
         
         .game-info {
@@ -399,6 +405,7 @@
                 verticalWalls: Array(7).fill().map(() => Array(8).fill(false)),
                 selectedPiece: null,
                 hasMoved: false,
+                movedPiecePosition: null, // 记录移动后的棋子位置
                 wallOptions: []
             };
 
@@ -451,7 +458,7 @@
                 // 移除现有的围墙元素
                 document.querySelectorAll('.wall').forEach(wall => wall.remove());
                 
-                // 绘制水平围墙
+                // 绘制水平围墙 - 完全贴着格子边缘
                 for (let y = 0; y < gameState.horizontalWalls.length; y++) {
                     for (let x = 0; x < gameState.horizontalWalls[y].length; x++) {
                         if (gameState.horizontalWalls[y][x]) {
@@ -464,7 +471,7 @@
                     }
                 }
                 
-                // 绘制垂直围墙
+                // 绘制垂直围墙 - 完全贴着格子边缘
                 for (let x = 0; x < gameState.verticalWalls.length; x++) {
                     for (let y = 0; y < gameState.verticalWalls[x].length; y++) {
                         if (gameState.verticalWalls[x][y]) {
@@ -599,26 +606,53 @@
                     pieceObj.y = y;
                 }
                 
+                // 记录移动后的位置
+                gameState.movedPiecePosition = { x, y };
+                
                 // 标记已移动
                 gameState.hasMoved = true;
                 
                 // 清除高亮
                 clearHighlights();
                 
-                // 显示围墙选项
+                // 显示围墙选项 - 基于移动后的位置
                 showWallOptions(x, y);
             }
 
-            // 显示围墙选项
+            // 显示围墙选项 - 基于移动后的棋子位置
             function showWallOptions(x, y) {
                 // 清除之前的围墙选项
                 clearWallOptions();
                 
                 const directions = [
-                    { dx: 0, dy: -1, name: '上', wallX: x, wallY: y, orientation: 'horizontal' },
-                    { dx: 0, dy: 1, name: '下', wallX: x, wallY: y+1, orientation: 'horizontal' },
-                    { dx: -1, dy: 0, name: '左', wallX: x, wallY: y, orientation: 'vertical' },
-                    { dx: 1, dy: 0, name: '右', wallX: x+1, wallY: y, orientation: 'vertical' }
+                    { 
+                        dx: 0, dy: -1, name: '上', 
+                        wallX: x, wallY: y, 
+                        orientation: 'horizontal',
+                        optionX: x * 50 + 25, 
+                        optionY: y * 50 - 10
+                    },
+                    { 
+                        dx: 0, dy: 1, name: '下', 
+                        wallX: x, wallY: y + 1, 
+                        orientation: 'horizontal',
+                        optionX: x * 50 + 25, 
+                        optionY: y * 50 + 60
+                    },
+                    { 
+                        dx: -1, dy: 0, name: '左', 
+                        wallX: x, wallY: y, 
+                        orientation: 'vertical',
+                        optionX: x * 50 - 10, 
+                        optionY: y * 50 + 25
+                    },
+                    { 
+                        dx: 1, dy: 0, name: '右', 
+                        wallX: x + 1, wallY: y, 
+                        orientation: 'vertical',
+                        optionX: x * 50 + 60, 
+                        optionY: y * 50 + 25
+                    }
                 ];
                 
                 directions.forEach((dir, index) => {
@@ -626,8 +660,8 @@
                         const option = document.createElement('div');
                         option.className = 'wall-option';
                         option.textContent = index + 1;
-                        option.style.top = `${y * 50 + 25 - 10 + dir.dy * 25}px`;
-                        option.style.left = `${x * 50 + 25 - 10 + dir.dx * 25}px`;
+                        option.style.left = `${dir.optionX}px`;
+                        option.style.top = `${dir.optionY}px`;
                         option.dataset.wallX = dir.wallX;
                         option.dataset.wallY = dir.wallY;
                         option.dataset.orientation = dir.orientation;
@@ -716,6 +750,7 @@
                 // 重置状态
                 gameState.selectedPiece = null;
                 gameState.hasMoved = false;
+                gameState.movedPiecePosition = null;
                 
                 // 自动切换到下一个玩家
                 switchToNextPlayer();
@@ -847,6 +882,7 @@
                 gameState.verticalWalls = Array(7).fill().map(() => Array(8).fill(false));
                 gameState.selectedPiece = null;
                 gameState.hasMoved = false;
+                gameState.movedPiecePosition = null;
                 gameState.wallOptions = [];
                 
                 // 重新创建棋盘
