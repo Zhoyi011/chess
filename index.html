@@ -78,7 +78,6 @@
             background-color: #ecf0f1;
             border: 3px solid #34495e;
             position: relative;
-            /* 优化渲染性能 */
             transform: translateZ(0);
             will-change: transform;
         }
@@ -92,7 +91,6 @@
             align-items: center;
             position: relative;
             border: 1px solid #bdc3c7;
-            /* 优化点击响应 */
             cursor: pointer;
             user-select: none;
             -webkit-user-select: none;
@@ -106,6 +104,14 @@
             background-color: rgba(241, 196, 15, 0.3);
         }
         
+        .cell.territory-player1 {
+            background-color: rgba(255, 107, 107, 0.3);
+        }
+        
+        .cell.territory-player2 {
+            background-color: rgba(78, 205, 196, 0.3);
+        }
+        
         .piece {
             width: 35px;
             height: 35px;
@@ -113,7 +119,6 @@
             position: relative;
             z-index: 10;
             box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
-            /* 优化动画性能 */
             transition: transform 0.1s ease;
             transform: translateZ(0);
         }
@@ -126,12 +131,16 @@
             background: linear-gradient(135deg, #4ecdc4, #16a085);
         }
         
+        .piece.trapped {
+            opacity: 0.6;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+        }
+        
         .wall {
             position: absolute;
             background-color: #2c3e50;
             z-index: 5;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-            /* 优化渲染 */
             transform: translateZ(0);
         }
         
@@ -162,7 +171,6 @@
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
             transition: all 0.2s ease;
             border: 3px solid white;
-            /* 优化渲染性能 */
             transform: translateZ(0);
             will-change: transform;
         }
@@ -241,6 +249,13 @@
             transform: translateY(1px);
         }
         
+        button:disabled {
+            background: linear-gradient(135deg, #7f8c8d, #95a5a6);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
         .score-area {
             display: flex;
             justify-content: space-between;
@@ -251,6 +266,15 @@
             font-size: 1.5rem;
             font-weight: bold;
         }
+        
+        .game-status {
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            margin-top: 10px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -259,6 +283,7 @@
             <h1>围墙争夺战</h1>
             <div class="game-description">
                 放置棋子，移动工人，建造围墙，围出最大的领地！通过策略性放置围墙来封闭区域，占据最多格子的玩家获胜。
+                被围墙完全包围的区域会成为你的领地，每个格子得1分。领地内只能有你的棋子，否则不算分。
             </div>
         </header>
         
@@ -293,15 +318,18 @@
                 </div>
                 
                 <div class="controls">
+                    <button id="change-piece">更换棋子</button>
+                    <button id="undo-move">悔棋</button>
                     <button id="restart-game">重新开始</button>
                 </div>
+                
+                <div class="game-status" id="game-status"></div>
             </div>
         </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // 使用更高效的数据结构
             const gameState = {
                 phase: 'placement',
                 currentPlayer: 0,
@@ -315,33 +343,35 @@
                 verticalWalls: Array(7).fill().map(() => Array(8).fill(false)),
                 selectedPiece: null,
                 hasMoved: false,
-                wallOptions: []
+                wallOptions: [],
+                territories: [],
+                gameOver: false,
+                history: []
             };
 
-            // 缓存DOM元素
             const gameBoard = document.getElementById('game-board');
             const phaseIndicator = document.getElementById('phase-indicator');
             const player1Info = document.getElementById('player1-info');
             const player2Info = document.getElementById('player2-info');
             const player1Pieces = document.getElementById('player1-pieces');
             const player2Pieces = document.getElementById('player2-pieces');
+            const player1Score = document.getElementById('player1-score');
+            const player2Score = document.getElementById('player2-score');
             const restartBtn = document.getElementById('restart-game');
-
-            // 预创建棋子元素池
-            const piecePool = {
-                player1: [],
-                player2: []
-            };
+            const changePieceBtn = document.getElementById('change-piece');
+            const undoMoveBtn = document.getElementById('undo-move');
+            const gameStatus = document.getElementById('game-status');
 
             function initGame() {
                 createBoard();
                 updateUI();
                 restartBtn.addEventListener('click', restartGame);
+                changePieceBtn.addEventListener('click', changePiece);
+                undoMoveBtn.addEventListener('click', undoMove);
             }
 
             function createBoard() {
                 gameBoard.innerHTML = '';
-                // 使用DocumentFragment批量操作DOM
                 const fragment = document.createDocumentFragment();
                 
                 for (let y = 0; y < gameState.boardSize; y++) {
@@ -350,7 +380,6 @@
                         cell.className = 'cell';
                         cell.dataset.x = x;
                         cell.dataset.y = y;
-                        // 使用事件委托提高性能
                         cell.addEventListener('click', handleCellClick);
                         fragment.appendChild(cell);
                     }
@@ -361,7 +390,6 @@
             }
 
             function drawWalls() {
-                // 批量移除围墙
                 const existingWalls = document.querySelectorAll('.wall');
                 if (existingWalls.length > 0) {
                     existingWalls.forEach(wall => wall.remove());
@@ -398,8 +426,9 @@
                 gameBoard.appendChild(fragment);
             }
 
-            // 优化事件处理
             function handleCellClick(event) {
+                if (gameState.gameOver) return;
+                
                 const cell = event.currentTarget;
                 const x = parseInt(cell.dataset.x);
                 const y = parseInt(cell.dataset.y);
@@ -421,6 +450,9 @@
                 if (currentPlayer.pieces.length >= 4) return;
                 if (gameState.cells[y][x] !== null) return;
                 
+                // 保存历史状态
+                saveGameState();
+                
                 gameState.cells[y][x] = gameState.currentPlayer;
                 currentPlayer.pieces.push({ x, y });
                 
@@ -429,7 +461,6 @@
                 piece.className = `piece player${gameState.currentPlayer + 1}`;
                 cell.appendChild(piece);
                 
-                // 立即切换玩家，不等待UI更新
                 switchToNextPlayer();
                 checkPhaseTransition();
                 updateUI();
@@ -438,11 +469,28 @@
             function selectPiece(x, y) {
                 const cellOwner = gameState.cells[y][x];
                 if (cellOwner === gameState.currentPlayer) {
+                    // 检查棋子是否被困
+                    if (isPieceTrapped(x, y)) {
+                        gameStatus.textContent = "这个棋子已被困住，无法移动！";
+                        setTimeout(() => gameStatus.textContent = "", 2000);
+                        return;
+                    }
+                    
                     gameState.selectedPiece = { x, y };
                     clearHighlights();
                     const selectedCell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
                     selectedCell.classList.add('selected');
                     showValidMoves(x, y);
+                }
+            }
+
+            function changePiece() {
+                if (gameState.phase === 'movement' && gameState.selectedPiece && !gameState.hasMoved) {
+                    clearHighlights();
+                    gameState.selectedPiece = null;
+                    gameStatus.textContent = "已取消选择棋子，请重新选择";
+                    setTimeout(() => gameStatus.textContent = "", 2000);
+                    updateUI();
                 }
             }
 
@@ -454,7 +502,6 @@
                     { dx: 1, dy: 0 }
                 ];
                 
-                // 批量操作高亮
                 directions.forEach(dir => {
                     const newX = x + dir.dx;
                     const newY = y + dir.dy;
@@ -473,18 +520,18 @@
                 
                 if (!isValidMove(fromX, fromY, x, y)) return;
                 
-                // 立即更新游戏状态
+                // 保存历史状态
+                saveGameState();
+                
                 gameState.cells[fromY][fromX] = null;
                 gameState.cells[y][x] = gameState.currentPlayer;
                 
-                // 直接移动DOM元素，而不是重新创建
                 const fromCell = document.querySelector(`.cell[data-x="${fromX}"][data-y="${fromY}"]`);
                 const toCell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
                 const piece = fromCell.querySelector('.piece');
                 fromCell.removeChild(piece);
                 toCell.appendChild(piece);
                 
-                // 更新棋子位置
                 const currentPlayer = gameState.players[gameState.currentPlayer];
                 const pieceObj = currentPlayer.pieces.find(p => p.x === fromX && p.y === fromY);
                 if (pieceObj) {
@@ -542,8 +589,54 @@
                         const wallOption = document.createElement('div');
                         wallOption.className = 'wall-option';
                         wallOption.textContent = option.number;
-                        wallOption.style.left = `${option.left}px`;
-                        wallOption.style.top = `${option.top}px`;
+                        
+                        // 修复角落位置计算
+                        let left = option.left;
+                        let top = option.top;
+                        
+                        // 处理水平围墙选项在顶部和底部边缘的情况
+                        if (option.orientation === 'horizontal') {
+                            // 确保围墙选项在棋盘范围内
+                            if (option.wallY === 0) {
+                                top = 0;
+                            } else if (option.wallY === gameState.boardSize) {
+                                top = gameState.boardSize * 50 - 15;
+                            }
+                            
+                            // 确保水平围墙选项不会超出左右边界
+                            if (left < 0) left = 0;
+                            if (left > gameState.boardSize * 50 - 30) left = gameState.boardSize * 50 - 30;
+                        } 
+                        // 处理垂直围墙选项在左侧和右侧边缘的情况
+                        else {
+                            // 确保围墙选项在棋盘范围内
+                            if (option.wallX === 0) {
+                                left = 0;
+                            } else if (option.wallX === gameState.boardSize) {
+                                left = gameState.boardSize * 50 - 15;
+                            }
+                            
+                            // 确保垂直围墙选项不会超出上下边界
+                            if (top < 0) top = 0;
+                            if (top > gameState.boardSize * 50 - 30) top = gameState.boardSize * 50 - 30;
+                        }
+                        
+                        // 特殊处理角落情况
+                        if (x === 0 && option.orientation === 'vertical' && option.wallX === 0) {
+                            left = 0;
+                        }
+                        if (x === gameState.boardSize - 1 && option.orientation === 'vertical' && option.wallX === gameState.boardSize) {
+                            left = gameState.boardSize * 50 - 15;
+                        }
+                        if (y === 0 && option.orientation === 'horizontal' && option.wallY === 0) {
+                            top = 0;
+                        }
+                        if (y === gameState.boardSize - 1 && option.orientation === 'horizontal' && option.wallY === gameState.boardSize) {
+                            top = gameState.boardSize * 50 - 15;
+                        }
+                        
+                        wallOption.style.left = `${left}px`;
+                        wallOption.style.top = `${top}px`;
                         wallOption.dataset.wallX = option.wallX;
                         wallOption.dataset.wallY = option.wallY;
                         wallOption.dataset.orientation = option.orientation;
@@ -562,13 +655,11 @@
             }
 
             function clearWallOptions() {
-                // 批量移除围墙选项
                 gameState.wallOptions.forEach(option => option.remove());
                 gameState.wallOptions = [];
             }
 
             function clearHighlights() {
-                // 使用classList批量操作
                 const highlighted = document.querySelectorAll('.cell.highlight, .cell.selected');
                 highlighted.forEach(cell => {
                     cell.classList.remove('highlight', 'selected');
@@ -606,6 +697,9 @@
             }
 
             function placeWall(x, y, orientation) {
+                // 保存历史状态
+                saveGameState();
+                
                 if (orientation === 'horizontal') {
                     gameState.horizontalWalls[y][x] = true;
                 } else {
@@ -615,11 +709,17 @@
                 drawWalls();
                 clearWallOptions();
                 
+                // 检测领地
+                detectTerritories();
+                
                 gameState.selectedPiece = null;
                 gameState.hasMoved = false;
                 
                 switchToNextPlayer();
                 updateUI();
+                
+                // 检查游戏是否结束
+                checkGameEnd();
             }
 
             function canPlaceWall(x, y, orientation) {
@@ -638,6 +738,9 @@
 
             function switchToNextPlayer() {
                 gameState.currentPlayer = (gameState.currentPlayer + 1) % 2;
+                // 关键修复：每次切换玩家时重置移动状态
+                gameState.hasMoved = false;
+                gameState.selectedPiece = null;
             }
 
             function checkPhaseTransition() {
@@ -649,17 +752,309 @@
                 }
             }
 
+            // 保存游戏状态到历史记录
+            function saveGameState() {
+                // 深拷贝游戏状态
+                const stateCopy = {
+                    phase: gameState.phase,
+                    currentPlayer: gameState.currentPlayer,
+                    players: JSON.parse(JSON.stringify(gameState.players)),
+                    cells: JSON.parse(JSON.stringify(gameState.cells)),
+                    horizontalWalls: JSON.parse(JSON.stringify(gameState.horizontalWalls)),
+                    verticalWalls: JSON.parse(JSON.stringify(gameState.verticalWalls)),
+                    selectedPiece: gameState.selectedPiece ? {...gameState.selectedPiece} : null,
+                    hasMoved: gameState.hasMoved
+                };
+                
+                gameState.history.push(stateCopy);
+                
+                // 限制历史记录长度，避免内存占用过大
+                if (gameState.history.length > 20) {
+                    gameState.history.shift();
+                }
+            }
+
+            // 悔棋功能
+            function undoMove() {
+                if (gameState.history.length === 0) {
+                    gameStatus.textContent = "没有可以悔棋的操作";
+                    setTimeout(() => gameStatus.textContent = "", 2000);
+                    return;
+                }
+                
+                const previousState = gameState.history.pop();
+                
+                // 恢复游戏状态
+                gameState.phase = previousState.phase;
+                gameState.currentPlayer = previousState.currentPlayer;
+                gameState.players = previousState.players;
+                gameState.cells = previousState.cells;
+                gameState.horizontalWalls = previousState.horizontalWalls;
+                gameState.verticalWalls = previousState.verticalWalls;
+                gameState.selectedPiece = previousState.selectedPiece;
+                gameState.hasMoved = previousState.hasMoved;
+                
+                // 重新渲染棋盘
+                createBoard();
+                
+                // 重新放置棋子
+                for (let y = 0; y < gameState.boardSize; y++) {
+                    for (let x = 0; x < gameState.boardSize; x++) {
+                        if (gameState.cells[y][x] !== null) {
+                            const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                            const piece = document.createElement('div');
+                            piece.className = `piece player${gameState.cells[y][x] + 1}`;
+                            cell.appendChild(piece);
+                        }
+                    }
+                }
+                
+                // 重新检测领地
+                detectTerritories();
+                
+                gameStatus.textContent = "已悔棋一步";
+                setTimeout(() => gameStatus.textContent = "", 2000);
+                
+                updateUI();
+            }
+
+            // 检测领地
+            function detectTerritories() {
+                // 清除之前的领地标记
+                clearTerritories();
+                
+                // 重置得分
+                gameState.players[0].score = 0;
+                gameState.players[1].score = 0;
+                
+                // 标记所有访问过的格子
+                const visited = Array(gameState.boardSize).fill().map(() => Array(gameState.boardSize).fill(false));
+                
+                // 遍历所有格子
+                for (let y = 0; y < gameState.boardSize; y++) {
+                    for (let x = 0; x < gameState.boardSize; x++) {
+                        if (!visited[y][x]) {
+                            // 使用BFS找到连通区域
+                            const region = bfsRegion(x, y, visited);
+                            
+                            // 检查这个区域是否被完全包围
+                            if (isRegionEnclosed(region)) {
+                                // 确定区域内的棋子所有者
+                                const owner = getRegionOwner(region);
+                                
+                                if (owner !== null) {
+                                    // 标记领地
+                                    markTerritory(region, owner);
+                                    
+                                    // 更新得分
+                                    gameState.players[owner].score += region.length;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // BFS查找连通区域
+            function bfsRegion(startX, startY, visited) {
+                const region = [];
+                const queue = [{x: startX, y: startY}];
+                visited[startY][startX] = true;
+                
+                while (queue.length > 0) {
+                    const {x, y} = queue.shift();
+                    region.push({x, y});
+                    
+                    // 检查四个方向
+                    const directions = [
+                        {dx: 0, dy: -1}, // 上
+                        {dx: 0, dy: 1},  // 下
+                        {dx: -1, dy: 0}, // 左
+                        {dx: 1, dy: 0}   // 右
+                    ];
+                    
+                    for (const dir of directions) {
+                        const newX = x + dir.dx;
+                        const newY = y + dir.dy;
+                        
+                        // 检查是否在边界内且未被访问
+                        if (newX >= 0 && newX < gameState.boardSize && 
+                            newY >= 0 && newY < gameState.boardSize && 
+                            !visited[newY][newX]) {
+                            
+                            // 检查是否有围墙阻挡
+                            if (!isWallBetween(x, y, newX, newY)) {
+                                visited[newY][newX] = true;
+                                queue.push({x: newX, y: newY});
+                            }
+                        }
+                    }
+                }
+                
+                return region;
+            }
+            
+            // 检查两个相邻格子之间是否有围墙
+            function isWallBetween(x1, y1, x2, y2) {
+                if (x1 === x2) {
+                    // 垂直移动
+                    const wallY = Math.min(y1, y2) + 1;
+                    return gameState.horizontalWalls[wallY][x1];
+                } else {
+                    // 水平移动
+                    const wallX = Math.min(x1, x2) + 1;
+                    return gameState.verticalWalls[wallX][y1];
+                }
+            }
+            
+            // 检查区域是否被完全包围
+            function isRegionEnclosed(region) {
+                for (const cell of region) {
+                    const {x, y} = cell;
+                    
+                    // 检查四个方向是否有出口
+                    const directions = [
+                        {dx: 0, dy: -1}, // 上
+                        {dx: 0, dy: 1},  // 下
+                        {dx: -1, dy: 0}, // 左
+                        {dx: 1, dy: 0}   // 右
+                    ];
+                    
+                    for (const dir of directions) {
+                        const newX = x + dir.dx;
+                        const newY = y + dir.dy;
+                        
+                        // 如果相邻格子在棋盘外，说明有边界围墙
+                        if (newX < 0 || newX >= gameState.boardSize || 
+                            newY < 0 || newY >= gameState.boardSize) {
+                            continue;
+                        }
+                        
+                        // 如果相邻格子不在区域内且没有围墙阻挡，说明区域未完全包围
+                        if (!region.some(c => c.x === newX && c.y === newY) && 
+                            !isWallBetween(x, y, newX, newY)) {
+                            return false;
+                        }
+                    }
+                }
+                
+                return true;
+            }
+            
+            // 获取区域内的棋子所有者
+            function getRegionOwner(region) {
+                let player1Pieces = 0;
+                let player2Pieces = 0;
+                
+                for (const cell of region) {
+                    const {x, y} = cell;
+                    const cellOwner = gameState.cells[y][x];
+                    
+                    if (cellOwner === 0) player1Pieces++;
+                    if (cellOwner === 1) player2Pieces++;
+                }
+                
+                // 如果区域内只有一种颜色的棋子，返回该玩家
+                if (player1Pieces > 0 && player2Pieces === 0) return 0;
+                if (player2Pieces > 0 && player1Pieces === 0) return 1;
+                
+                // 如果区域内有多种颜色的棋子或没有棋子，返回null
+                return null;
+            }
+            
+            // 标记领地
+            function markTerritory(region, owner) {
+                for (const cell of region) {
+                    const {x, y} = cell;
+                    const cellElement = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                    
+                    if (owner === 0) {
+                        cellElement.classList.add('territory-player1');
+                    } else {
+                        cellElement.classList.add('territory-player2');
+                    }
+                }
+            }
+            
+            // 清除领地标记
+            function clearTerritories() {
+                const territoryCells = document.querySelectorAll('.cell.territory-player1, .cell.territory-player2');
+                territoryCells.forEach(cell => {
+                    cell.classList.remove('territory-player1', 'territory-player2');
+                });
+            }
+            
+            // 检查棋子是否被困
+            function isPieceTrapped(x, y) {
+                const directions = [
+                    {dx: 0, dy: -1},
+                    {dx: 0, dy: 1},
+                    {dx: -1, dy: 0},
+                    {dx: 1, dy: 0}
+                ];
+                
+                for (const dir of directions) {
+                    const newX = x + dir.dx;
+                    const newY = y + dir.dy;
+                    
+                    if (isValidMove(x, y, newX, newY)) {
+                        return false;
+                    }
+                }
+                
+                return true;
+            }
+            
+            // 检查游戏是否结束
+            function checkGameEnd() {
+                // 检查是否所有棋子都被困
+                let allPiecesTrapped = true;
+                
+                for (const player of gameState.players) {
+                    for (const piece of player.pieces) {
+                        if (!isPieceTrapped(piece.x, piece.y)) {
+                            allPiecesTrapped = false;
+                            break;
+                        }
+                    }
+                    if (!allPiecesTrapped) break;
+                }
+                
+                if (allPiecesTrapped) {
+                    gameState.gameOver = true;
+                    
+                    // 确定获胜者
+                    const player1Score = gameState.players[0].score;
+                    const player2Score = gameState.players[1].score;
+                    
+                    if (player1Score > player2Score) {
+                        gameStatus.textContent = "游戏结束！玩家1获胜！";
+                    } else if (player2Score > player1Score) {
+                        gameStatus.textContent = "游戏结束！玩家2获胜！";
+                    } else {
+                        gameStatus.textContent = "游戏结束！平局！";
+                    }
+                }
+            }
+
             function restartGame() {
                 gameState.phase = 'placement';
                 gameState.currentPlayer = 0;
                 gameState.players[0].pieces = [];
                 gameState.players[1].pieces = [];
+                gameState.players[0].score = 0;
+                gameState.players[1].score = 0;
                 gameState.cells = Array(7).fill().map(() => Array(7).fill(null));
                 gameState.horizontalWalls = Array(8).fill().map(() => Array(7).fill(false));
                 gameState.verticalWalls = Array(7).fill().map(() => Array(8).fill(false));
                 gameState.selectedPiece = null;
                 gameState.hasMoved = false;
                 gameState.wallOptions = [];
+                gameState.territories = [];
+                gameState.gameOver = false;
+                gameState.history = [];
+                
+                gameStatus.textContent = "";
                 
                 createBoard();
                 updateUI();
@@ -673,12 +1068,41 @@
                 player1Pieces.textContent = gameState.players[0].pieces.length;
                 player2Pieces.textContent = gameState.players[1].pieces.length;
                 
+                player1Score.textContent = gameState.players[0].score;
+                player2Score.textContent = gameState.players[1].score;
+                
                 if (gameState.currentPlayer === 0) {
                     player1Info.classList.add('active');
                     player2Info.classList.remove('active');
                 } else {
                     player1Info.classList.remove('active');
                     player2Info.classList.add('active');
+                }
+                
+                // 更新按钮状态
+                changePieceBtn.disabled = !(gameState.phase === 'movement' && gameState.selectedPiece && !gameState.hasMoved);
+                undoMoveBtn.disabled = gameState.history.length === 0;
+                
+                // 更新棋子被困状态
+                updateTrappedPieces();
+            }
+            
+            function updateTrappedPieces() {
+                // 清除所有被困标记
+                const trappedPieces = document.querySelectorAll('.piece.trapped');
+                trappedPieces.forEach(piece => {
+                    piece.classList.remove('trapped');
+                });
+                
+                // 标记被困棋子
+                for (const player of gameState.players) {
+                    for (const piece of player.pieces) {
+                        if (isPieceTrapped(piece.x, piece.y)) {
+                            const cell = document.querySelector(`.cell[data-x="${piece.x}"][data-y="${piece.y}"]`);
+                            const pieceElement = cell.querySelector('.piece');
+                            pieceElement.classList.add('trapped');
+                        }
+                    }
                 }
             }
 
