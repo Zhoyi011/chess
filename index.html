@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>围墙争夺战</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .container {
+            max-width: 1000px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        
+        h1 {
+            font-size: 2.8rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            background: linear-gradient(90deg, #ff6b6b, #4ecdc4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .game-description {
+            background-color: rgba(0, 0, 0, 0.4);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            max-width: 800px;
+            line-height: 1.5;
+        }
+        
+        .game-area {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 30px;
+            width: 100%;
+        }
+        
+        .board-container {
+            position: relative;
+            background-color: #2c3e50;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        }
+        
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(7, 50px);
+            grid-template-rows: repeat(7, 50px);
+            gap: 0;
+            background-color: #ecf0f1;
+            border: 3px solid #34495e;
+            position: relative;
+        }
+        
+        .cell {
+            width: 50px;
+            height: 50px;
+            background-color: #ecf0f1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        
+        .cell.highlight {
+            background-color: rgba(52, 152, 219, 0.3);
+        }
+        
+        .piece {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            position: relative;
+            z-index: 10;
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .piece.player1 {
+            background: linear-gradient(135deg, #ff6b6b, #c0392b);
+        }
+        
+        .piece.player2 {
+            background: linear-gradient(135deg, #4ecdc4, #16a085);
+        }
+        
+        .wall {
+            position: absolute;
+            background-color: #2c3e50;
+            z-index: 5;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .wall.horizontal {
+            width: 50px;
+            height: 8px;
+            transform: translateY(-4px);
+        }
+        
+        .wall.vertical {
+            width: 8px;
+            height: 50px;
+            transform: translateX(-4px);
+        }
+        
+        .wall.preview {
+            background-color: rgba(52, 152, 219, 0.7);
+        }
+        
+        .game-info {
+            background-color: rgba(0, 0, 0, 0.4);
+            padding: 20px;
+            border-radius: 15px;
+            width: 300px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .player-info {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+        
+        .player-info.active {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+        }
+        
+        .player1-info {
+            background: linear-gradient(135deg, rgba(255, 107, 107, 0.3), rgba(192, 57, 43, 0.3));
+            border-left: 5px solid #ff6b6b;
+        }
+        
+        .player2-info {
+            background: linear-gradient(135deg, rgba(78, 205, 196, 0.3), rgba(22, 160, 133, 0.3));
+            border-left: 5px solid #4ecdc4;
+        }
+        
+        .phase-indicator {
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        button:active {
+            transform: translateY(1px);
+        }
+        
+        button:disabled {
+            background: linear-gradient(135deg, #7f8c8d, #95a5a6);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .score-area {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+        
+        .score {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        
+        .instructions {
+            background-color: rgba(0, 0, 0, 0.4);
+            padding: 20px;
+            border-radius: 15px;
+            max-width: 800px;
+            margin-top: 20px;
+        }
+        
+        .instructions h2 {
+            margin-bottom: 15px;
+            color: #3498db;
+        }
+        
+        .instructions ol {
+            margin-left: 20px;
+            line-height: 1.6;
+        }
+        
+        .instructions li {
+            margin-bottom: 10px;
+        }
+        
+        .game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            border-radius: 15px;
+        }
+        
+        .game-over h2 {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            color: #f1c40f;
+        }
+        
+        .game-over p {
+            font-size: 1.5rem;
+            margin-bottom: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .game-area {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .game-info {
+                width: 100%;
+                max-width: 400px;
+            }
+            
+            #game-board {
+                grid-template-columns: repeat(7, 40px);
+                grid-template-rows: repeat(7, 40px);
+            }
+            
+            .cell {
+                width: 40px;
+                height: 40px;
+            }
+            
+            .piece {
+                width: 30px;
+                height: 30px;
+            }
+            
+            .wall.horizontal {
+                width: 40px;
+            }
+            
+            .wall.vertical {
+                height: 40px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>围墙争夺战</h1>
+            <div class="game-description">
+                放置棋子，移动工人，建造围墙，围出最大的领地！通过策略性放置围墙来封闭区域，占据最多格子的玩家获胜。
+            </div>
+        </header>
+        
+        <div class="game-area">
+            <div class="board-container">
+                <div id="game-board">
+                    <!-- 棋盘由JavaScript动态生成 -->
+                </div>
+            </div>
+            
+            <div class="game-info">
+                <div class="phase-indicator" id="phase-indicator">放置阶段 - 玩家1的回合</div>
+                
+                <div class="player-info player1-info active" id="player1-info">
+                    <h3>玩家1</h3>
+                    <div>已放置棋子: <span id="player1-pieces">0</span>/4</div>
+                    <div>剩余围墙: <span id="player1-walls">20</span></div>
+                    <div class="score-area">
+                        <span>得分:</span>
+                        <span class="score" id="player1-score">0</span>
+                    </div>
+                </div>
+                
+                <div class="player-info player2-info" id="player2-info">
+                    <h3>玩家2</h3>
+                    <div>已放置棋子: <span id="player2-pieces">0</span>/4</div>
+                    <div>剩余围墙: <span id="player2-walls">20</span></div>
+                    <div class="score-area">
+                        <span>得分:</span>
+                        <span class="score" id="player2-score">0</span>
+                    </div>
+                </div>
+                
+                <div class="controls">
+                    <button id="end-turn">结束回合</button>
+                    <button id="restart-game">重新开始</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="instructions">
+            <h2>游戏规则</h2>
+            <ol>
+                <li><strong>放置阶段</strong>：玩家轮流在棋盘上放置棋子，每方最多放置4个棋子。</li>
+                <li><strong>移动与围墙阶段</strong>：每回合选择一个棋子移动一格，然后在棋子相邻位置放置一面围墙。</li>
+                <li><strong>围墙放置</strong>：围墙可以放置在棋子前后左右的格子边界上，用于围出封闭区域。</li>
+                <li><strong>胜利条件</strong>：当棋盘无法再放置围墙时游戏结束，围出最大封闭区域的玩家获胜。</li>
+                <li><strong>策略提示</strong>：合理规划棋子位置，使用围墙阻挡对手并扩大自己的领地。</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 游戏状态
+            const gameState = {
+                phase: 'placement', // 'placement' 或 'movement'
+                currentPlayer: 0, // 0: 玩家1, 1: 玩家2
+                boardSize: 7,
+                players: [
+                    { id: 0, pieces: [], walls: 20, color: '#FF6B6B', score: 0 },
+                    { id: 1, pieces: [], walls: 20, color: '#4ECDC4', score: 0 }
+                ],
+                // 棋盘状态
+                cells: Array(7).fill().map(() => Array(7).fill(null)),
+                horizontalWalls: Array(8).fill().map(() => Array(7).fill(false)),
+                verticalWalls: Array(7).fill().map(() => Array(8).fill(false)),
+                selectedPiece: null,
+                wallPreview: null
+            };
+
+            // DOM 元素
+            const gameBoard = document.getElementById('game-board');
+            const phaseIndicator = document.getElementById('phase-indicator');
+            const player1Info = document.getElementById('player1-info');
+            const player2Info = document.getElementById('player2-info');
+            const player1Pieces = document.getElementById('player1-pieces');
+            const player2Pieces = document.getElementById('player2-pieces');
+            const player1Walls = document.getElementById('player1-walls');
+            const player2Walls = document.getElementById('player2-walls');
+            const player1Score = document.getElementById('player1-score');
+            const player2Score = document.getElementById('player2-score');
+            const endTurnBtn = document.getElementById('end-turn');
+            const restartBtn = document.getElementById('restart-game');
+
+            // 初始化游戏
+            function initGame() {
+                createBoard();
+                updateUI();
+                
+                // 事件监听
+                endTurnBtn.addEventListener('click', endTurn);
+                restartBtn.addEventListener('click', restartGame);
+            }
+
+            // 创建棋盘
+            function createBoard() {
+                gameBoard.innerHTML = '';
+                
+                for (let y = 0; y < gameState.boardSize; y++) {
+                    for (let x = 0; x < gameState.boardSize; x++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell';
+                        cell.dataset.x = x;
+                        cell.dataset.y = y;
+                        
+                        // 添加点击事件
+                        cell.addEventListener('click', () => handleCellClick(x, y));
+                        
+                        // 添加鼠标悬停事件
+                        cell.addEventListener('mouseenter', () => handleCellHover(x, y));
+                        cell.addEventListener('mouseleave', () => handleCellHoverLeave(x, y));
+                        
+                        gameBoard.appendChild(cell);
+                    }
+                }
+                
+                // 绘制初始围墙（边界）
+                drawWalls();
+            }
+
+            // 绘制围墙
+            function drawWalls() {
+                // 移除现有的围墙元素
+                document.querySelectorAll('.wall').forEach(wall => wall.remove());
+                
+                // 绘制水平围墙
+                for (let y = 0; y < gameState.horizontalWalls.length; y++) {
+                    for (let x = 0; x < gameState.horizontalWalls[y].length; x++) {
+                        if (gameState.horizontalWalls[y][x]) {
+                            const wall = document.createElement('div');
+                            wall.className = 'wall horizontal';
+                            wall.style.top = `${y * 50}px`;
+                            wall.style.left = `${x * 50}px`;
+                            gameBoard.appendChild(wall);
+                        }
+                    }
+                }
+                
+                // 绘制垂直围墙
+                for (let x = 0; x < gameState.verticalWalls.length; x++) {
+                    for (let y = 0; y < gameState.verticalWalls[x].length; y++) {
+                        if (gameState.verticalWalls[x][y]) {
+                            const wall = document.createElement('div');
+                            wall.className = 'wall vertical';
+                            wall.style.top = `${y * 50}px`;
+                            wall.style.left = `${x * 50}px`;
+                            gameBoard.appendChild(wall);
+                        }
+                    }
+                }
+            }
+
+            // 处理格子点击
+            function handleCellClick(x, y) {
+                if (gameState.phase === 'placement') {
+                    placePiece(x, y);
+                } else if (gameState.phase === 'movement') {
+                    if (gameState.selectedPiece) {
+                        // 如果已经选择了棋子，尝试移动
+                        movePiece(x, y);
+                    } else {
+                        // 选择棋子
+                        selectPiece(x, y);
+                    }
+                }
+                
+                updateUI();
+            }
+
+            // 处理格子悬停
+            function handleCellHover(x, y) {
+                if (gameState.phase === 'movement' && gameState.selectedPiece) {
+                    // 显示可移动位置
+                    const cells = document.querySelectorAll('.cell');
+                    cells.forEach(cell => {
+                        const cellX = parseInt(cell.dataset.x);
+                        const cellY = parseInt(cell.dataset.y);
+                        
+                        if (isValidMove(gameState.selectedPiece.x, gameState.selectedPiece.y, cellX, cellY)) {
+                            cell.classList.add('highlight');
+                        }
+                    });
+                    
+                    // 显示围墙预览
+                    showWallPreview(x, y);
+                }
+            }
+
+            // 处理格子悬停离开
+            function handleCellHoverLeave(x, y) {
+                const cells = document.querySelectorAll('.cell');
+                cells.forEach(cell => cell.classList.remove('highlight'));
+                
+                // 移除围墙预览
+                removeWallPreview();
+            }
+
+            // 显示围墙预览
+            function showWallPreview(x, y) {
+                if (!gameState.selectedPiece) return;
+                
+                removeWallPreview();
+                
+                const pieceX = gameState.selectedPiece.x;
+                const pieceY = gameState.selectedPiece.y;
+                
+                // 确定围墙位置
+                let wallX, wallY, orientation;
+                
+                if (x === pieceX && y === pieceY - 1) {
+                    // 上方
+                    wallX = pieceX;
+                    wallY = pieceY;
+                    orientation = 'horizontal';
+                } else if (x === pieceX && y === pieceY + 1) {
+                    // 下方
+                    wallX = pieceX;
+                    wallY = pieceY + 1;
+                    orientation = 'horizontal';
+                } else if (x === pieceX - 1 && y === pieceY) {
+                    // 左方
+                    wallX = pieceX;
+                    wallY = pieceY;
+                    orientation = 'vertical';
+                } else if (x === pieceX + 1 && y === pieceY) {
+                    // 右方
+                    wallX = pieceX + 1;
+                    wallY = pieceY;
+                    orientation = 'vertical';
+                } else {
+                    return;
+                }
+                
+                // 检查是否可以放置围墙
+                if (canPlaceWall(wallX, wallY, orientation)) {
+                    const wall = document.createElement('div');
+                    wall.className = `wall ${orientation} preview`;
+                    wall.style.top = `${wallY * 50}px`;
+                    wall.style.left = `${wallX * 50}px`;
+                    gameBoard.appendChild(wall);
+                    
+                    gameState.wallPreview = { x: wallX, y: wallY, orientation };
+                }
+            }
+
+            // 移除围墙预览
+            function removeWallPreview() {
+                document.querySelectorAll('.wall.preview').forEach(wall => wall.remove());
+                gameState.wallPreview = null;
+            }
+
+            // 放置棋子
+            function placePiece(x, y) {
+                const currentPlayer = gameState.players[gameState.currentPlayer];
+                
+                // 检查是否可以放置
+                if (currentPlayer.pieces.length >= 4) {
+                    alert('已达到最大棋子数量！');
+                    return;
+                }
+                
+                if (gameState.cells[y][x] !== null) {
+                    alert('该位置已有棋子！');
+                    return;
+                }
+                
+                // 放置棋子
+                gameState.cells[y][x] = gameState.currentPlayer;
+                currentPlayer.pieces.push({ x, y, player: gameState.currentPlayer });
+                
+                // 更新棋子显示
+                const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                const piece = document.createElement('div');
+                piece.className = `piece player${gameState.currentPlayer + 1}`;
+                cell.appendChild(piece);
+                
+                // 检查是否进入下一阶段
+                checkPhaseTransition();
+            }
+
+            // 选择棋子
+            function selectPiece(x, y) {
+                const cellOwner = gameState.cells[y][x];
+                
+                if (cellOwner === gameState.currentPlayer) {
+                    gameState.selectedPiece = { x, y };
+                    
+                    // 高亮显示选中的棋子
+                    const cells = document.querySelectorAll('.cell');
+                    cells.forEach(cell => cell.classList.remove('selected'));
+                    
+                    const selectedCell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                    selectedCell.classList.add('selected');
+                }
+            }
+
+            // 移动棋子
+            function movePiece(x, y) {
+                if (!gameState.selectedPiece) return;
+                
+                const fromX = gameState.selectedPiece.x;
+                const fromY = gameState.selectedPiece.y;
+                
+                // 检查移动是否有效
+                if (!isValidMove(fromX, fromY, x, y)) {
+                    alert('无效的移动！');
+                    return;
+                }
+                
+                // 执行移动
+                gameState.cells[fromY][fromX] = null;
+                gameState.cells[y][x] = gameState.currentPlayer;
+                
+                // 更新棋子位置
+                const fromCell = document.querySelector(`.cell[data-x="${fromX}"][data-y="${fromY}"]`);
+                const toCell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                
+                const piece = fromCell.querySelector('.piece');
+                fromCell.removeChild(piece);
+                toCell.appendChild(piece);
+                
+                // 更新棋子对象位置
+                const currentPlayer = gameState.players[gameState.currentPlayer];
+                const pieceObj = currentPlayer.pieces.find(p => p.x === fromX && p.y === fromY);
+                if (pieceObj) {
+                    pieceObj.x = x;
+                    pieceObj.y = y;
+                }
+                
+                // 放置围墙
+                if (gameState.wallPreview) {
+                    placeWall(
+                        gameState.wallPreview.x,
+                        gameState.wallPreview.y,
+                        gameState.wallPreview.orientation
+                    );
+                }
+                
+                // 重置选择
+                gameState.selectedPiece = null;
+                removeWallPreview();
+                
+                // 检查游戏是否结束
+                checkGameEnd();
+            }
+
+            // 检查移动是否有效
+            function isValidMove(fromX, fromY, toX, toY) {
+                // 检查是否在棋盘范围内
+                if (toX < 0 || toX >= gameState.boardSize || toY < 0 || toY >= gameState.boardSize) {
+                    return false;
+                }
+                
+                // 检查目标位置是否为空
+                if (gameState.cells[toY][toX] !== null) {
+                    return false;
+                }
+                
+                // 检查移动距离
+                const dx = Math.abs(toX - fromX);
+                const dy = Math.abs(toY - fromY);
+                
+                if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+                    // 检查是否有围墙阻挡
+                    if (dx === 1) {
+                        // 水平移动
+                        const wallX = Math.min(fromX, toX) + 1;
+                        const wallY = fromY;
+                        if (gameState.verticalWalls[wallX][wallY]) {
+                            return false;
+                        }
+                    } else {
+                        // 垂直移动
+                        const wallX = fromX;
+                        const wallY = Math.min(fromY, toY) + 1;
+                        if (gameState.horizontalWalls[wallY][wallX]) {
+                            return false;
+                        }
+                    }
+                    
+                    return true;
+                }
+                
+                return false;
+            }
+
+            // 放置围墙
+            function placeWall(x, y, orientation) {
+                const currentPlayer = gameState.players[gameState.currentPlayer];
+                
+                // 检查是否可以放置围墙
+                if (!canPlaceWall(x, y, orientation)) {
+                    alert('无法在此处放置围墙！');
+                    return false;
+                }
+                
+                // 放置围墙
+                if (orientation === 'horizontal') {
+                    gameState.horizontalWalls[y][x] = true;
+                } else {
+                    gameState.verticalWalls[x][y] = true;
+                }
+                
+                // 更新围墙数量
+                currentPlayer.walls--;
+                
+                // 重新绘制围墙
+                drawWalls();
+                
+                return true;
+            }
+
+            // 检查是否可以放置围墙
+            function canPlaceWall(x, y, orientation) {
+                const currentPlayer = gameState.players[gameState.currentPlayer];
+                
+                // 检查是否有足够的围墙
+                if (currentPlayer.walls <= 0) {
+                    return false;
+                }
+                
+                // 检查是否在有效位置
+                if (orientation === 'horizontal') {
+                    if (y < 0 || y > gameState.boardSize || x < 0 || x >= gameState.boardSize) {
+                        return false;
+                    }
+                    
+                    // 检查是否已有围墙
+                    if (gameState.horizontalWalls[y][x]) {
+                        return false;
+                    }
+                } else {
+                    if (x < 0 || x > gameState.boardSize || y < 0 || y >= gameState.boardSize) {
+                        return false;
+                    }
+                    
+                    // 检查是否已有围墙
+                    if (gameState.verticalWalls[x][y]) {
+                        return false;
+                    }
+                }
+                
+                return true;
+            }
+
+            // 检查阶段转换
+            function checkPhaseTransition() {
+                const player1PiecesCount = gameState.players[0].pieces.length;
+                const player2PiecesCount = gameState.players[1].pieces.length;
+                
+                // 如果双方都放置了4个棋子，进入移动阶段
+                if (player1PiecesCount === 4 && player2PiecesCount === 4) {
+                    gameState.phase = 'movement';
+                    phaseIndicator.textContent = '移动阶段 - 玩家1的回合';
+                }
+            }
+
+            // 检查游戏是否结束
+            function checkGameEnd() {
+                // 简化版游戏结束条件：当一方围墙用完时游戏结束
+                const player1Walls = gameState.players[0].walls;
+                const player2Walls = gameState.players[1].walls;
+                
+                if (player1Walls <= 0 || player2Walls <= 0) {
+                    endGame();
+                }
+            }
+
+            // 结束游戏
+            function endGame() {
+                // 计算得分（简化版）
+                const player1Score = Math.floor(Math.random() * 10) + 5;
+                const player2Score = Math.floor(Math.random() * 10) + 5;
+                
+                gameState.players[0].score = player1Score;
+                gameState.players[1].score = player2Score;
+                
+                // 显示游戏结束画面
+                const gameOver = document.createElement('div');
+                gameOver.className = 'game-over';
+                gameOver.innerHTML = `
+                    <h2>游戏结束</h2>
+                    <p>玩家1: ${player1Score} 分</p>
+                    <p>玩家2: ${player2Score} 分</p>
+                    <p>${player1Score > player2Score ? '玩家1获胜！' : player1Score < player2Score ? '玩家2获胜！' : '平局！'}</p>
+                    <button id="play-again">再玩一次</button>
+                `;
+                
+                document.querySelector('.board-container').appendChild(gameOver);
+                
+                document.getElementById('play-again').addEventListener('click', () => {
+                    gameOver.remove();
+                    restartGame();
+                });
+            }
+
+            // 结束回合
+            function endTurn() {
+                if (gameState.phase === 'placement') {
+                    gameState.currentPlayer = (gameState.currentPlayer + 1) % 2;
+                } else if (gameState.phase === 'movement') {
+                    gameState.currentPlayer = (gameState.currentPlayer + 1) % 2;
+                    gameState.selectedPiece = null;
+                    removeWallPreview();
+                }
+                
+                updateUI();
+            }
+
+            // 重新开始游戏
+            function restartGame() {
+                // 重置游戏状态
+                gameState.phase = 'placement';
+                gameState.currentPlayer = 0;
+                gameState.players[0].pieces = [];
+                gameState.players[1].pieces = [];
+                gameState.players[0].walls = 20;
+                gameState.players[1].walls = 20;
+                gameState.players[0].score = 0;
+                gameState.players[1].score = 0;
+                gameState.cells = Array(7).fill().map(() => Array(7).fill(null));
+                gameState.horizontalWalls = Array(8).fill().map(() => Array(7).fill(false));
+                gameState.verticalWalls = Array(7).fill().map(() => Array(8).fill(false));
+                gameState.selectedPiece = null;
+                gameState.wallPreview = null;
+                
+                // 重新创建棋盘
+                createBoard();
+                updateUI();
+            }
+
+            // 更新UI
+            function updateUI() {
+                // 更新阶段指示器
+                if (gameState.phase === 'placement') {
+                    phaseIndicator.textContent = `放置阶段 - 玩家${gameState.currentPlayer + 1}的回合`;
+                } else {
+                    phaseIndicator.textContent = `移动阶段 - 玩家${gameState.currentPlayer + 1}的回合`;
+                }
+                
+                // 更新玩家信息
+                player1Pieces.textContent = gameState.players[0].pieces.length;
+                player2Pieces.textContent = gameState.players[1].pieces.length;
+                player1Walls.textContent = gameState.players[0].walls;
+                player2Walls.textContent = gameState.players[1].walls;
+                player1Score.textContent = gameState.players[0].score;
+                player2Score.textContent = gameState.players[1].score;
+                
+                // 更新当前玩家高亮
+                if (gameState.currentPlayer === 0) {
+                    player1Info.classList.add('active');
+                    player2Info.classList.remove('active');
+                } else {
+                    player1Info.classList.remove('active');
+                    player2Info.classList.add('active');
+                }
+            }
+
+            // 初始化游戏
+            initGame();
+        });
+    </script>
+</body>
+</html>
