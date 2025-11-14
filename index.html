@@ -88,10 +88,15 @@
             justify-content: center;
             align-items: center;
             position: relative;
+            border: 1px solid #bdc3c7;
         }
         
         .cell.highlight {
             background-color: rgba(52, 152, 219, 0.3);
+        }
+        
+        .cell.selected {
+            background-color: rgba(241, 196, 15, 0.3);
         }
         
         .piece {
@@ -121,18 +126,33 @@
         
         .wall.horizontal {
             width: 50px;
-            height: 8px;
-            transform: translateY(-4px);
+            height: 6px;
         }
         
         .wall.vertical {
-            width: 8px;
+            width: 6px;
             height: 50px;
-            transform: translateX(-4px);
         }
         
         .wall.preview {
             background-color: rgba(52, 152, 219, 0.7);
+        }
+        
+        .wall-option {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: #3498db;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 15;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
         
         .game-info {
@@ -327,7 +347,7 @@
                 <div class="player-info player1-info active" id="player1-info">
                     <h3>玩家1</h3>
                     <div>已放置棋子: <span id="player1-pieces">0</span>/4</div>
-                    <div>剩余围墙: <span id="player1-walls">20</span></div>
+                    <div>剩余围墙: <span id="player1-walls">∞</span></div>
                     <div class="score-area">
                         <span>得分:</span>
                         <span class="score" id="player1-score">0</span>
@@ -337,7 +357,7 @@
                 <div class="player-info player2-info" id="player2-info">
                     <h3>玩家2</h3>
                     <div>已放置棋子: <span id="player2-pieces">0</span>/4</div>
-                    <div>剩余围墙: <span id="player2-walls">20</span></div>
+                    <div>剩余围墙: <span id="player2-walls">∞</span></div>
                     <div class="score-area">
                         <span>得分:</span>
                         <span class="score" id="player2-score">0</span>
@@ -345,7 +365,6 @@
                 </div>
                 
                 <div class="controls">
-                    <button id="end-turn">结束回合</button>
                     <button id="restart-game">重新开始</button>
                 </div>
             </div>
@@ -354,9 +373,9 @@
         <div class="instructions">
             <h2>游戏规则</h2>
             <ol>
-                <li><strong>放置阶段</strong>：玩家轮流在棋盘上放置棋子，每方最多放置4个棋子。</li>
-                <li><strong>移动与围墙阶段</strong>：每回合选择一个棋子移动一格，然后在棋子相邻位置放置一面围墙。</li>
-                <li><strong>围墙放置</strong>：围墙可以放置在棋子前后左右的格子边界上，用于围出封闭区域。</li>
+                <li><strong>放置阶段</strong>：玩家轮流在棋盘上放置棋子，每回合只能放置1个棋子，每方最多放置4个棋子。</li>
+                <li><strong>移动与围墙阶段</strong>：每回合选择一个棋子移动一格，然后选择在棋子前后左右其中一个位置放置一面围墙。</li>
+                <li><strong>围墙放置</strong>：围墙放置在格子边缘，用于围出封闭区域。</li>
                 <li><strong>胜利条件</strong>：当棋盘无法再放置围墙时游戏结束，围出最大封闭区域的玩家获胜。</li>
                 <li><strong>策略提示</strong>：合理规划棋子位置，使用围墙阻挡对手并扩大自己的领地。</li>
             </ol>
@@ -371,15 +390,16 @@
                 currentPlayer: 0, // 0: 玩家1, 1: 玩家2
                 boardSize: 7,
                 players: [
-                    { id: 0, pieces: [], walls: 20, color: '#FF6B6B', score: 0 },
-                    { id: 1, pieces: [], walls: 20, color: '#4ECDC4', score: 0 }
+                    { id: 0, pieces: [], walls: Infinity, color: '#FF6B6B', score: 0 },
+                    { id: 1, pieces: [], walls: Infinity, color: '#4ECDC4', score: 0 }
                 ],
                 // 棋盘状态
                 cells: Array(7).fill().map(() => Array(7).fill(null)),
                 horizontalWalls: Array(8).fill().map(() => Array(7).fill(false)),
                 verticalWalls: Array(7).fill().map(() => Array(8).fill(false)),
                 selectedPiece: null,
-                wallPreview: null
+                hasMoved: false,
+                wallOptions: []
             };
 
             // DOM 元素
@@ -393,7 +413,6 @@
             const player2Walls = document.getElementById('player2-walls');
             const player1Score = document.getElementById('player1-score');
             const player2Score = document.getElementById('player2-score');
-            const endTurnBtn = document.getElementById('end-turn');
             const restartBtn = document.getElementById('restart-game');
 
             // 初始化游戏
@@ -402,7 +421,6 @@
                 updateUI();
                 
                 // 事件监听
-                endTurnBtn.addEventListener('click', endTurn);
                 restartBtn.addEventListener('click', restartGame);
             }
 
@@ -419,10 +437,6 @@
                         
                         // 添加点击事件
                         cell.addEventListener('click', () => handleCellClick(x, y));
-                        
-                        // 添加鼠标悬停事件
-                        cell.addEventListener('mouseenter', () => handleCellHover(x, y));
-                        cell.addEventListener('mouseleave', () => handleCellHoverLeave(x, y));
                         
                         gameBoard.appendChild(cell);
                     }
@@ -469,98 +483,14 @@
                 if (gameState.phase === 'placement') {
                     placePiece(x, y);
                 } else if (gameState.phase === 'movement') {
-                    if (gameState.selectedPiece) {
-                        // 如果已经选择了棋子，尝试移动
-                        movePiece(x, y);
-                    } else {
+                    if (!gameState.selectedPiece) {
                         // 选择棋子
                         selectPiece(x, y);
+                    } else if (!gameState.hasMoved) {
+                        // 移动棋子
+                        movePiece(x, y);
                     }
                 }
-                
-                updateUI();
-            }
-
-            // 处理格子悬停
-            function handleCellHover(x, y) {
-                if (gameState.phase === 'movement' && gameState.selectedPiece) {
-                    // 显示可移动位置
-                    const cells = document.querySelectorAll('.cell');
-                    cells.forEach(cell => {
-                        const cellX = parseInt(cell.dataset.x);
-                        const cellY = parseInt(cell.dataset.y);
-                        
-                        if (isValidMove(gameState.selectedPiece.x, gameState.selectedPiece.y, cellX, cellY)) {
-                            cell.classList.add('highlight');
-                        }
-                    });
-                    
-                    // 显示围墙预览
-                    showWallPreview(x, y);
-                }
-            }
-
-            // 处理格子悬停离开
-            function handleCellHoverLeave(x, y) {
-                const cells = document.querySelectorAll('.cell');
-                cells.forEach(cell => cell.classList.remove('highlight'));
-                
-                // 移除围墙预览
-                removeWallPreview();
-            }
-
-            // 显示围墙预览
-            function showWallPreview(x, y) {
-                if (!gameState.selectedPiece) return;
-                
-                removeWallPreview();
-                
-                const pieceX = gameState.selectedPiece.x;
-                const pieceY = gameState.selectedPiece.y;
-                
-                // 确定围墙位置
-                let wallX, wallY, orientation;
-                
-                if (x === pieceX && y === pieceY - 1) {
-                    // 上方
-                    wallX = pieceX;
-                    wallY = pieceY;
-                    orientation = 'horizontal';
-                } else if (x === pieceX && y === pieceY + 1) {
-                    // 下方
-                    wallX = pieceX;
-                    wallY = pieceY + 1;
-                    orientation = 'horizontal';
-                } else if (x === pieceX - 1 && y === pieceY) {
-                    // 左方
-                    wallX = pieceX;
-                    wallY = pieceY;
-                    orientation = 'vertical';
-                } else if (x === pieceX + 1 && y === pieceY) {
-                    // 右方
-                    wallX = pieceX + 1;
-                    wallY = pieceY;
-                    orientation = 'vertical';
-                } else {
-                    return;
-                }
-                
-                // 检查是否可以放置围墙
-                if (canPlaceWall(wallX, wallY, orientation)) {
-                    const wall = document.createElement('div');
-                    wall.className = `wall ${orientation} preview`;
-                    wall.style.top = `${wallY * 50}px`;
-                    wall.style.left = `${wallX * 50}px`;
-                    gameBoard.appendChild(wall);
-                    
-                    gameState.wallPreview = { x: wallX, y: wallY, orientation };
-                }
-            }
-
-            // 移除围墙预览
-            function removeWallPreview() {
-                document.querySelectorAll('.wall.preview').forEach(wall => wall.remove());
-                gameState.wallPreview = null;
             }
 
             // 放置棋子
@@ -588,8 +518,13 @@
                 piece.className = `piece player${gameState.currentPlayer + 1}`;
                 cell.appendChild(piece);
                 
+                // 自动切换到下一个玩家
+                switchToNextPlayer();
+                
                 // 检查是否进入下一阶段
                 checkPhaseTransition();
+                
+                updateUI();
             }
 
             // 选择棋子
@@ -605,7 +540,30 @@
                     
                     const selectedCell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
                     selectedCell.classList.add('selected');
+                    
+                    // 显示可移动位置
+                    showValidMoves(x, y);
                 }
+            }
+
+            // 显示有效移动位置
+            function showValidMoves(x, y) {
+                const directions = [
+                    { dx: 0, dy: -1, name: '上' },
+                    { dx: 0, dy: 1, name: '下' },
+                    { dx: -1, dy: 0, name: '左' },
+                    { dx: 1, dy: 0, name: '右' }
+                ];
+                
+                directions.forEach(dir => {
+                    const newX = x + dir.dx;
+                    const newY = y + dir.dy;
+                    
+                    if (isValidMove(x, y, newX, newY)) {
+                        const cell = document.querySelector(`.cell[data-x="${newX}"][data-y="${newY}"]`);
+                        cell.classList.add('highlight');
+                    }
+                });
             }
 
             // 移动棋子
@@ -641,21 +599,63 @@
                     pieceObj.y = y;
                 }
                 
-                // 放置围墙
-                if (gameState.wallPreview) {
-                    placeWall(
-                        gameState.wallPreview.x,
-                        gameState.wallPreview.y,
-                        gameState.wallPreview.orientation
-                    );
-                }
+                // 标记已移动
+                gameState.hasMoved = true;
                 
-                // 重置选择
-                gameState.selectedPiece = null;
-                removeWallPreview();
+                // 清除高亮
+                clearHighlights();
                 
-                // 检查游戏是否结束
-                checkGameEnd();
+                // 显示围墙选项
+                showWallOptions(x, y);
+            }
+
+            // 显示围墙选项
+            function showWallOptions(x, y) {
+                // 清除之前的围墙选项
+                clearWallOptions();
+                
+                const directions = [
+                    { dx: 0, dy: -1, name: '上', wallX: x, wallY: y, orientation: 'horizontal' },
+                    { dx: 0, dy: 1, name: '下', wallX: x, wallY: y+1, orientation: 'horizontal' },
+                    { dx: -1, dy: 0, name: '左', wallX: x, wallY: y, orientation: 'vertical' },
+                    { dx: 1, dy: 0, name: '右', wallX: x+1, wallY: y, orientation: 'vertical' }
+                ];
+                
+                directions.forEach((dir, index) => {
+                    if (canPlaceWall(dir.wallX, dir.wallY, dir.orientation)) {
+                        const option = document.createElement('div');
+                        option.className = 'wall-option';
+                        option.textContent = index + 1;
+                        option.style.top = `${y * 50 + 25 - 10 + dir.dy * 25}px`;
+                        option.style.left = `${x * 50 + 25 - 10 + dir.dx * 25}px`;
+                        option.dataset.wallX = dir.wallX;
+                        option.dataset.wallY = dir.wallY;
+                        option.dataset.orientation = dir.orientation;
+                        
+                        option.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            placeWall(dir.wallX, dir.wallY, dir.orientation);
+                        });
+                        
+                        gameBoard.appendChild(option);
+                        gameState.wallOptions.push(option);
+                    }
+                });
+            }
+
+            // 清除围墙选项
+            function clearWallOptions() {
+                gameState.wallOptions.forEach(option => option.remove());
+                gameState.wallOptions = [];
+            }
+
+            // 清除高亮
+            function clearHighlights() {
+                const cells = document.querySelectorAll('.cell');
+                cells.forEach(cell => {
+                    cell.classList.remove('highlight');
+                    cell.classList.remove('selected');
+                });
             }
 
             // 检查移动是否有效
@@ -700,14 +700,6 @@
 
             // 放置围墙
             function placeWall(x, y, orientation) {
-                const currentPlayer = gameState.players[gameState.currentPlayer];
-                
-                // 检查是否可以放置围墙
-                if (!canPlaceWall(x, y, orientation)) {
-                    alert('无法在此处放置围墙！');
-                    return false;
-                }
-                
                 // 放置围墙
                 if (orientation === 'horizontal') {
                     gameState.horizontalWalls[y][x] = true;
@@ -715,24 +707,27 @@
                     gameState.verticalWalls[x][y] = true;
                 }
                 
-                // 更新围墙数量
-                currentPlayer.walls--;
-                
                 // 重新绘制围墙
                 drawWalls();
                 
-                return true;
+                // 清除围墙选项
+                clearWallOptions();
+                
+                // 重置状态
+                gameState.selectedPiece = null;
+                gameState.hasMoved = false;
+                
+                // 自动切换到下一个玩家
+                switchToNextPlayer();
+                
+                // 检查游戏是否结束
+                checkGameEnd();
+                
+                updateUI();
             }
 
             // 检查是否可以放置围墙
             function canPlaceWall(x, y, orientation) {
-                const currentPlayer = gameState.players[gameState.currentPlayer];
-                
-                // 检查是否有足够的围墙
-                if (currentPlayer.walls <= 0) {
-                    return false;
-                }
-                
                 // 检查是否在有效位置
                 if (orientation === 'horizontal') {
                     if (y < 0 || y > gameState.boardSize || x < 0 || x >= gameState.boardSize) {
@@ -757,6 +752,11 @@
                 return true;
             }
 
+            // 切换到下一个玩家
+            function switchToNextPlayer() {
+                gameState.currentPlayer = (gameState.currentPlayer + 1) % 2;
+            }
+
             // 检查阶段转换
             function checkPhaseTransition() {
                 const player1PiecesCount = gameState.players[0].pieces.length;
@@ -771,11 +771,34 @@
 
             // 检查游戏是否结束
             function checkGameEnd() {
-                // 简化版游戏结束条件：当一方围墙用完时游戏结束
-                const player1Walls = gameState.players[0].walls;
-                const player2Walls = gameState.players[1].walls;
+                // 简化版游戏结束条件：当棋盘上无法再放置围墙时游戏结束
+                let canPlaceMoreWalls = false;
                 
-                if (player1Walls <= 0 || player2Walls <= 0) {
+                // 检查水平围墙
+                for (let y = 0; y <= gameState.boardSize; y++) {
+                    for (let x = 0; x < gameState.boardSize; x++) {
+                        if (!gameState.horizontalWalls[y][x]) {
+                            canPlaceMoreWalls = true;
+                            break;
+                        }
+                    }
+                    if (canPlaceMoreWalls) break;
+                }
+                
+                // 检查垂直围墙
+                if (!canPlaceMoreWalls) {
+                    for (let x = 0; x <= gameState.boardSize; x++) {
+                        for (let y = 0; y < gameState.boardSize; y++) {
+                            if (!gameState.verticalWalls[x][y]) {
+                                canPlaceMoreWalls = true;
+                                break;
+                            }
+                        }
+                        if (canPlaceMoreWalls) break;
+                    }
+                }
+                
+                if (!canPlaceMoreWalls) {
                     endGame();
                 }
             }
@@ -808,19 +831,6 @@
                 });
             }
 
-            // 结束回合
-            function endTurn() {
-                if (gameState.phase === 'placement') {
-                    gameState.currentPlayer = (gameState.currentPlayer + 1) % 2;
-                } else if (gameState.phase === 'movement') {
-                    gameState.currentPlayer = (gameState.currentPlayer + 1) % 2;
-                    gameState.selectedPiece = null;
-                    removeWallPreview();
-                }
-                
-                updateUI();
-            }
-
             // 重新开始游戏
             function restartGame() {
                 // 重置游戏状态
@@ -828,15 +838,16 @@
                 gameState.currentPlayer = 0;
                 gameState.players[0].pieces = [];
                 gameState.players[1].pieces = [];
-                gameState.players[0].walls = 20;
-                gameState.players[1].walls = 20;
+                gameState.players[0].walls = Infinity;
+                gameState.players[1].walls = Infinity;
                 gameState.players[0].score = 0;
                 gameState.players[1].score = 0;
                 gameState.cells = Array(7).fill().map(() => Array(7).fill(null));
                 gameState.horizontalWalls = Array(8).fill().map(() => Array(7).fill(false));
                 gameState.verticalWalls = Array(7).fill().map(() => Array(8).fill(false));
                 gameState.selectedPiece = null;
-                gameState.wallPreview = null;
+                gameState.hasMoved = false;
+                gameState.wallOptions = [];
                 
                 // 重新创建棋盘
                 createBoard();
@@ -855,8 +866,8 @@
                 // 更新玩家信息
                 player1Pieces.textContent = gameState.players[0].pieces.length;
                 player2Pieces.textContent = gameState.players[1].pieces.length;
-                player1Walls.textContent = gameState.players[0].walls;
-                player2Walls.textContent = gameState.players[1].walls;
+                player1Walls.textContent = '∞';
+                player2Walls.textContent = '∞';
                 player1Score.textContent = gameState.players[0].score;
                 player2Score.textContent = gameState.players[1].score;
                 
